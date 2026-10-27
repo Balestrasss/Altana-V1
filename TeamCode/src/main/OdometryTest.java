@@ -1,4 +1,16 @@
-{
+package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+
+//Bibliotecas para a ODOMETRY
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+
+@TeleOp(name = "TesteOdometryAndPods", group = "Linear")
+public class TesteOdometryAndPods extends LinearOpMode {
 
     GoBildaPinpointDriver odo;
 
