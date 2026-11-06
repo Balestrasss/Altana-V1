@@ -3,8 +3,10 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 //Motor e afins
+import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.ElapsedTime;
 //Odometria
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -25,14 +27,16 @@ public class TeleOpfinal extends LinearOpMode {
 
     // Lançador
     private DcMotor motorPotencia;
-    private Servo ServoC;
+    private CRServo ServoC;
     private Servo servoTorreta;
+    private double posicaoTorreta = 0.5;    // torreta começa no meio
+    private ElapsedTime timer = new ElapsedTime();
 
     // Servos Modeladores (Se eles controlam posições, devem ser do tipo Servo)
     private Servo servoPotencia;
     private Servo servo2Potencia;
-    private double UltimaPotencia = 0;
-    private double Ultima2Potencia = 0;
+    private double PotenciaAtual = 1;
+    private double PotenciaAtual2 = 1;
 
     // Odometria GoBilda Pinpoint
     private GoBildaPinpointDriver odo;
@@ -42,38 +46,50 @@ public class TeleOpfinal extends LinearOpMode {
         inicializarHardware();
         invmotores();
 
-        telemetry.addData("Status", "Pronto");
         odo = hardwareMap.get(GoBildaPinpointDriver.class, "odo");
+        odometry();   // configura a odometria UMA vez, antes do start
+
+        telemetry.addData("Status", "Pronto");
+        telemetry.addData("ServoC", ServoC == null ? "NAO ENCONTRADO na config" : "ok");
         telemetry.update();
 
         waitForStart();
+        timer.reset();
+
         while (opModeIsActive()) {
+            odo.update();   // atualiza a odometria a cada ciclo
+
             movimentacao();
             coletor();
             motorsLancador();
             servoLancador();
             servoTORRETA();
-            telemetriafinal();
-            initHardware();
+            coletoreverse();
 
             Pose2D pos = odo.getPosition();
+
+            telemetry.addData("Torreta", "%.2f", posicaoTorreta);
+            telemetry.addData("Lancador", "%.2f", motorPotencia.getPower());
+            telemetry.addData("ServoC", ServoC == null ? "NAO ENCONTRADO" : "ok");
+            telemetry.addData("Auxilio", "%.2f", Auxilio.getPower());   // MUDOU
+            telemetry.update();
         }
     }
 
     public void invmotores() {
-        Lef.setDirection(DcMotor.Direction.REVERSE);
-        Let.setDirection(DcMotor.Direction.REVERSE);
-        Ldf.setDirection(DcMotor.Direction.FORWARD);
-        Ldt.setDirection(DcMotor.Direction.FORWARD);
+        Lef.setDirection(DcMotor.Direction.FORWARD);
+        Let.setDirection(DcMotor.Direction.FORWARD);
+        Ldf.setDirection(DcMotor.Direction.REVERSE);
+        Ldt.setDirection(DcMotor.Direction.REVERSE);
         Coletor.setDirection(DcMotor.Direction.FORWARD);
-        Auxilio.setDirection(DcMotor.Direction.FORWARD);
+        Auxilio.setDirection(DcMotor.Direction.REVERSE);
     }
 
     // Controle 1 - Locomoção
     public void movimentacao() {
-        double  axial   = -this.gamepad1.left_stick_y,
-                lateral =  this.gamepad1.left_stick_x,
-                rot     =  this.gamepad1.right_stick_x;
+        double  axial   =  this.gamepad1.left_stick_y,
+                lateral = -this.gamepad1.left_stick_x,
+                rot     = -this.gamepad1.right_stick_x;
 
         double VLef = axial - lateral + rot,
                 VLdf = axial + lateral - rot,
@@ -84,7 +100,7 @@ public class TeleOpfinal extends LinearOpMode {
         max = Math.max(max, Math.abs(VLet));
         max = Math.max(max, Math.abs(VLdt));
 
-        if (max > 1) {
+        if (max > 0.50) {
             VLef /= max;
             VLdf /= max;
             VLet /= max;
@@ -103,80 +119,100 @@ public class TeleOpfinal extends LinearOpMode {
 
         if (botaoAAtual && !botaoAAnterior) {
             coletorLigado = !coletorLigado;
-            servoRLigado  = !servoRLigado;
-            servoLLigado  = !servoLLigado;
         }
-
-        Coletor.setPower(coletorLigado ? 1.0 : 0.0);
-        Auxilio.setPower(coletorLigado ? 1.0 : 0.0);
-        FlorR.setPosition(servoRLigado ? 1.0 : 0.0);
-        FlorL.setPosition(servoLLigado ? 1.0 : 0.0);
-
         botaoAAnterior = botaoAAtual;
+        if (coletorLigado) {
+            Coletor.setPower(1.0);
+            Auxilio.setPower(1.0);
+        } else {
+            Coletor.setPower(0.0);
+            Auxilio.setPower(0.0);
+        }
+
+    }
+    public void coletoreverse(){
+        if(gamepad1.b){
+            Coletor.setPower(-1.0);
+            Auxilio.setPower(-1.0);
+        }
     }
 
+    // Controle 2 - Lançador (analógico direito pra cima) e gatilho (Y)
     public void motorsLancador() {
+        double controleY = -gamepad2.right_stick_y;        // pra cima = positivo
+        if (controleY < 0.03) controleY = 0;                       // perto do centro ou pra baixo = desligado
+        motorPotencia.setPower(controleY * 0.54);          // analógico no topo = 0.57
+        //Justino mudou sex 06/11 de 0.57 -> 0.54
 
-        if (gamepad2.right_trigger > 0.1) {
-            motorPotencia.setPower(0.59);
+        if (gamepad2.y) {
+            ServoC.setPower(1.0);
         } else {
-            motorPotencia.setPower(0.0);
-        }
-
-        // Servo Gatilho liga junto do lançador
-        if (gamepad2.right_trigger > 0.1) {
-            ServoC.setPosition(1.0);
-        } else {
-            ServoC.setPosition(0.0);
+            ServoC.setPower(0.0);
         }
     }
 
-    public void servoTORRETA(){     //*******
-        if(gamepad2.dpad_left){
-            servoTorreta.setPosition(1.0);
+    // Controle 2 - Torreta (analógico esquerdo pros lados)
+    public void servoTORRETA() {
+        double tempo = timer.seconds();
+        timer.reset(); // Reseta o timer para o próximo ciclo
+
+        double x = -gamepad2.left_stick_x; // -1 = esquerda, 1 = direita
+
+        // Zona morta: se o analógico estiver próximo do centro, força x para 0 absoluto
+        if (Math.abs(x) < 0.2) {
+            x = 0;
         }
-        else if (gamepad2.dpad_right){
-            servoTorreta.setPosition(-1.0);
+
+        // Atualiza a posição apenas se o analógico estiver sendo empurrado
+        if (x != 0) {
+            posicaoTorreta = posicaoTorreta + (x * 0.5 * tempo);
         }
-        else {
-            servoTorreta.setPosition(0.0);
+
+        // Limites seguros (sem saltos bruscos ou gambiarras)
+        if (posicaoTorreta > 0.7) {
+            posicaoTorreta = 0.7;
         }
+        if (posicaoTorreta < 0.0) {
+            posicaoTorreta = 0.0;
+        }
+
+        // Envia a posição final para o servo
+        servoTorreta.setPosition(posicaoTorreta);
     }
 
+    //Servos Auxiliadores
     public void servoLancador() {
-        if (gamepad1.a) {
-            UltimaPotencia = this.PotenciaAtual;
-            Ultima2Potencia = this.PotenciaAtual2;
+        if (gamepad2.a) {
 
-            servoPotencia.setPosition(0.25);
+            servoPotencia.setPosition(1.0);
 
-            servo2Potencia.setPosition(0.25);
+            servo2Potencia.setPosition(1.0);
         }
-        if (gamepad1.x) {
-            servoPotencia.setPosition(PotenciaAtual);
+        if (gamepad2.x) {
+            servoPotencia.setPosition(0.0);
 
-            servo2Potencia.setPosition(PotenciaAtual2);
+            servo2Potencia.setPosition(0.0);
         }
+
     }
 
-    public void initHardware(){
+    public void odometry(){
 
-            // Offsets = posição dos pods em relação ao centro de giro do robô (mm)
-            odo.setOffsets(30, 12, DistanceUnit.MM);
-            odo.setEncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
-            odo.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.FORWARD,
-                    GoBildaPinpointDriver.EncoderDirection.FORWARD);
+        // Offsets = posição dos pods em relação ao centro de giro do robô (mm)
+        odo.setOffsets(30, 12, DistanceUnit.MM);
+        odo.setEncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
+        odo.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.FORWARD,
+                GoBildaPinpointDriver.EncoderDirection.FORWARD);
 
-            // CORREÇÃO: Substituído resetPosAndIMU() por recalibrateIMU() e setPosition()
-            odo.recalibrateIMU();
-            sleep(300);
+        // CORREÇÃO: Substituído resetPosAndIMU() por recalibrateIMU() e setPosition()
+        odo.recalibrateIMU();
+        sleep(300);
 
-            // Posição inicial do robô no campo
-            odo.setPosition(new Pose2D(DistanceUnit.MM, 0, 0, AngleUnit.RADIANS, 0));
+        // Posição inicial do robô no campo
+        odo.setPosition(new Pose2D(DistanceUnit.MM, 0, 0, AngleUnit.RADIANS, 0));
 
-            telemetry.addData("Status", "Initialized");
-            telemetry.update();
-        }
+        telemetry.addData("Status", "Initialized");
+        telemetry.update();
     }
 
     public void inicializarHardware() {
@@ -186,19 +222,16 @@ public class TeleOpfinal extends LinearOpMode {
         Let            = hardwareMap.get(DcMotor.class,   "backLeft");
         Coletor        = hardwareMap.get(DcMotor.class,   "motorExtra");
         Auxilio        = hardwareMap.get(DcMotor.class,   "motorAuxiliar");
-        ServoC         = hardwareMap.get(CRServo.class,   "ServoColetor");
-        motorPotencia  = hardwareMap.get(DcMotor.class,   "motorPotencia");  //lancador
-        servoTorreta   = hardwareMap.get(Servo.class,     "servoTorreta"); //girar a torreta
+        motorPotencia  = hardwareMap.get(DcMotor.class,   "motorPotencia");
+        servoTorreta   = hardwareMap.get(Servo.class,     "servoTorreta");
         servoPotencia  = hardwareMap.get(Servo.class,     "servoPotencia");
-        servoPotencia.setDirection(Servo.Direction.FORWARD);
         servo2Potencia = hardwareMap.get(Servo.class,     "servo2Potencia");
-        servo2Potencia.setDirection(Servo.Direction.FORWARD);
+        ServoC         = hardwareMap.get(CRServo.class,   "ServoColetor");
         odo            = hardwareMap.get(GoBildaPinpointDriver.class, "odo");
+
+        motorPotencia.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        servoPotencia.setDirection(Servo.Direction.FORWARD);
+        servo2Potencia.setDirection(Servo.Direction.REVERSE);
+
     }
-
-    public void telemetriafinal() {
-        telemetry.addData("Status odo",       odo.getDeviceStatus());
-        telemetry.update();
-    }
-
-
+}
