@@ -1,4 +1,3 @@
-
 package org.firstinspires.ftc.teamcode;
 //Blbliotecas nescessárias para o TeleOp
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
