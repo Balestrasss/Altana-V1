@@ -28,17 +28,9 @@ public class TeleOpfinal extends LinearOpMode {
     // Lançador
     private DcMotor motorPotencia;
     private CRServo ServoC;
-    private boolean servoCLigado = false;
-    private boolean botaoYAnteerior = false;
     private Servo servoTorreta;
-    private double posicaoTorreta = 0.5;    // comando da torreta (0.5 = parada)
+    private double posicaoTorreta = 0.5;    // torreta começa no meio
     private ElapsedTime timer = new ElapsedTime();
-
-    // Torreta: servo de giro CONTÍNUO configurado como "Servo".
-    // setPosition aqui é VELOCIDADE: 0.5 = parado, 0.0 / 1.0 = velocidade máxima para cada lado
-    private static final double TORRETA_PARADA     = 0.5;   // se ela "andar" sozinha solta, ajuste fino (0.49 / 0.51)
-    private static final double ZONA_MORTA_TORRETA = 0.2;   // 20% do analógico não faz nada
-    private static final double VEL_MAX_TORRETA    = 1.0;   // 1.0 = velocidade máxima (baixe p/ ficar mais suave)
 
     // Servos Modeladores (Se eles controlam posições, devem ser do tipo Servo)
     private Servo servoPotencia;
@@ -72,14 +64,14 @@ public class TeleOpfinal extends LinearOpMode {
             motorsLancador();
             servoLancador();
             servoTORRETA();
+            coletoreverse();
 
             Pose2D pos = odo.getPosition();
 
-            telemetry.addData("Torreta (0.50 = parada)", "%.2f", posicaoTorreta);
+            telemetry.addData("Torreta", "%.2f", posicaoTorreta);
             telemetry.addData("Lancador", "%.2f", motorPotencia.getPower());
             telemetry.addData("ServoC", ServoC == null ? "NAO ENCONTRADO" : "ok");
             telemetry.addData("Auxilio", "%.2f", Auxilio.getPower());   // MUDOU
-            telemetry.addData("Coletor", "%.2f", Coletor.getPower());
             telemetry.update();
         }
     }
@@ -95,9 +87,9 @@ public class TeleOpfinal extends LinearOpMode {
 
     // Controle 1 - Locomoção
     public void movimentacao() {
-        double  axial   =  this.gamepad1.left_stick_y * 0.75,
-                lateral = -this.gamepad1.left_stick_x * 0.75,
-                rot     = -this.gamepad1.right_stick_x * 0.75;
+        double  axial   =  this.gamepad1.left_stick_y,
+                lateral = -this.gamepad1.left_stick_x,
+                rot     = -this.gamepad1.right_stick_x;
 
         double VLef = axial - lateral + rot,
                 VLdf = axial + lateral - rot,
@@ -108,7 +100,7 @@ public class TeleOpfinal extends LinearOpMode {
         max = Math.max(max, Math.abs(VLet));
         max = Math.max(max, Math.abs(VLdt));
 
-        if (max > 1) {
+        if (max > 0.50) {
             VLef /= max;
             VLdf /= max;
             VLet /= max;
@@ -128,7 +120,7 @@ public class TeleOpfinal extends LinearOpMode {
         if (botaoAAtual && !botaoAAnterior) {
             coletorLigado = !coletorLigado;
         }
-
+        botaoAAnterior = botaoAAtual;
         if (coletorLigado) {
             Coletor.setPower(1.0);
             Auxilio.setPower(1.0);
@@ -137,54 +129,54 @@ public class TeleOpfinal extends LinearOpMode {
             Auxilio.setPower(0.0);
         }
 
+    }
+    public void coletoreverse(){
         if(gamepad1.b){
             Coletor.setPower(-1.0);
             Auxilio.setPower(-1.0);
         }
-        else{
-            Coletor.setPower(0.0);
-            Auxilio.setPower(0.0);
-        }
-
-        botaoAAnterior = botaoAAtual;
     }
 
     // Controle 2 - Lançador (analógico direito pra cima) e gatilho (Y)
-    public void motorsLancador() {// pra cima = positivo
-   boolean botaoYAtual = gamepad2.y;
-       if (gamepad2.right_trigger > 0.2)
-            motorPotencia.setPower(0.53);
-        else {
-            motorPotencia.setPower(0.0);
-        }
-        if(botaoYAtual & !botaoYAnteerior){
-            servoCLigado = !servoCLigado;
-        }
-        if(servoCLigado){
+    public void motorsLancador() {
+        double controleY = -gamepad2.right_stick_y;        // pra cima = positivo
+        if (controleY < 0.03) controleY = 0;                       // perto do centro ou pra baixo = desligado
+        motorPotencia.setPower(controleY * 0.54);          // analógico no topo = 0.57
+        //Justino mudou sex 06/11 de 0.57 -> 0.54
+
+        if (gamepad2.y) {
             ServoC.setPower(1.0);
-        }
-        else{
+        } else {
             ServoC.setPower(0.0);
         }
-        botaoYAnteerior = botaoYAtual;
     }
 
     // Controle 2 - Torreta (analógico esquerdo pros lados)
     public void servoTORRETA() {
-        double x = -gamepad2.left_stick_x; // -1 = esquerda, 1 = direita
-        double vel;
+        double tempo = timer.seconds();
+        timer.reset(); // Reseta o timer para o próximo ciclo
 
-        // Zona morta: analógico solto (ou quase) = torreta PARADA
-        if (Math.abs(x) < ZONA_MORTA_TORRETA) {
-            vel = 0;
-        } else {
-            // Velocidade proporcional ao quanto o analógico foi mexido:
-            // 0% na borda da zona morta, 100% no fim do curso (sem "pulo")
-            vel = Math.signum(x) * (Math.abs(x) - ZONA_MORTA_TORRETA) / (1 - ZONA_MORTA_TORRETA);
+        double x = -gamepad2.left_stick_x; // -1 = esquerda, 1 = direita
+
+        // Zona morta: se o analógico estiver próximo do centro, força x para 0 absoluto
+        if (Math.abs(x) < 0.2) {
+            x = 0;
         }
 
-        // 0.5 = parado; soma/subtrai até 0.5 conforme a velocidade
-        posicaoTorreta = TORRETA_PARADA + 0.5 * vel * VEL_MAX_TORRETA;
+        // Atualiza a posição apenas se o analógico estiver sendo empurrado
+        if (x != 0) {
+            posicaoTorreta = posicaoTorreta + (x * 0.5 * tempo);
+        }
+
+        // Limites seguros (sem saltos bruscos ou gambiarras)
+        if (posicaoTorreta > 0.7) {
+            posicaoTorreta = 0.7;
+        }
+        if (posicaoTorreta < 0.0) {
+            posicaoTorreta = 0.0;
+        }
+
+        // Envia a posição final para o servo
         servoTorreta.setPosition(posicaoTorreta);
     }
 
@@ -238,7 +230,7 @@ public class TeleOpfinal extends LinearOpMode {
         odo            = hardwareMap.get(GoBildaPinpointDriver.class, "odo");
 
         motorPotencia.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        servoPotencia.setDirection(Servo.Direction.REVERSE);
+        servoPotencia.setDirection(Servo.Direction.FORWARD);
         servo2Potencia.setDirection(Servo.Direction.REVERSE);
 
     }
