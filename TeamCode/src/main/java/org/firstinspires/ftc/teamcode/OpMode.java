@@ -1,3 +1,4 @@
+
 package org.firstinspires.ftc.teamcode;
 //Blbliotecas nescessárias para o TeleOp
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -30,15 +31,9 @@ public class TeleOpfinal extends LinearOpMode {
     private CRServo ServoC;
     private boolean servoCLigado = false;
     private boolean botaoYAnteerior = false;
-    private Servo servoTorreta;
-    private double posicaoTorreta = 0.5;    // comando da torreta (0.5 = parada)
-    private ElapsedTime timer = new ElapsedTime();
 
-    // Torreta: servo de giro CONTÍNUO configurado como "Servo".
-    // setPosition aqui é VELOCIDADE: 0.5 = parado, 0.0 / 1.0 = velocidade máxima para cada lado
-    private static final double TORRETA_PARADA     = 0.5;   // se ela "andar" sozinha solta, ajuste fino (0.49 / 0.51)
-    private static final double ZONA_MORTA_TORRETA = 0.2;   // 20% do analógico não faz nada
-    private static final double VEL_MAX_TORRETA    = 1.0;   // 1.0 = velocidade máxima (baixe p/ ficar mais suave)
+    // comando da torreta (0.5 = parada)
+    private ElapsedTime timer = new ElapsedTime();
 
     // Servos Modeladores (Se eles controlam posições, devem ser do tipo Servo)
     private Servo servoPotencia;
@@ -71,11 +66,9 @@ public class TeleOpfinal extends LinearOpMode {
             coletor();
             motorsLancador();
             servoLancador();
-            servoTORRETA();
 
             Pose2D pos = odo.getPosition();
 
-            telemetry.addData("Torreta (0.50 = parada)", "%.2f", posicaoTorreta);
             telemetry.addData("Lancador", "%.2f", motorPotencia.getPower());
             telemetry.addData("ServoC", ServoC == null ? "NAO ENCONTRADO" : "ok");
             telemetry.addData("Auxilio", "%.2f", Auxilio.getPower());   // MUDOU
@@ -138,8 +131,8 @@ public class TeleOpfinal extends LinearOpMode {
         }
 
         if(gamepad1.b){
-            Coletor.setPower(-1.0);
-            Auxilio.setPower(-1.0);
+            Coletor.setPower(-0.5);
+            Auxilio.setPower(-0.5);
         }
         else{
             Coletor.setPower(0.0);
@@ -151,9 +144,9 @@ public class TeleOpfinal extends LinearOpMode {
 
     // Controle 2 - Lançador (analógico direito pra cima) e gatilho (Y)
     public void motorsLancador() {// pra cima = positivo
-   boolean botaoYAtual = gamepad2.y;
-       if (gamepad2.right_trigger > 0.2)
-            motorPotencia.setPower(0.53);
+        boolean botaoYAtual = gamepad2.y;
+        if (gamepad2.right_trigger > 0.2)
+            motorPotencia.setPower(0.51);
         else {
             motorPotencia.setPower(0.0);
         }
@@ -169,32 +162,13 @@ public class TeleOpfinal extends LinearOpMode {
         botaoYAnteerior = botaoYAtual;
     }
 
-    // Controle 2 - Torreta (analógico esquerdo pros lados)
-    public void servoTORRETA() {
-        double x = -gamepad2.left_stick_x; // -1 = esquerda, 1 = direita
-        double vel;
-
-        // Zona morta: analógico solto (ou quase) = torreta PARADA
-        if (Math.abs(x) < ZONA_MORTA_TORRETA) {
-            vel = 0;
-        } else {
-            // Velocidade proporcional ao quanto o analógico foi mexido:
-            // 0% na borda da zona morta, 100% no fim do curso (sem "pulo")
-            vel = Math.signum(x) * (Math.abs(x) - ZONA_MORTA_TORRETA) / (1 - ZONA_MORTA_TORRETA);
-        }
-
-        // 0.5 = parado; soma/subtrai até 0.5 conforme a velocidade
-        posicaoTorreta = TORRETA_PARADA + 0.5 * vel * VEL_MAX_TORRETA;
-        servoTorreta.setPosition(posicaoTorreta);
-    }
-
     //Servos Auxiliadores
     public void servoLancador() {
         if (gamepad2.a) {
 
-            servoPotencia.setPosition(1.0);
+            servoPotencia.setPosition(0.6);
 
-            servo2Potencia.setPosition(1.0);
+            servo2Potencia.setPosition(0.6);
         }
         if (gamepad2.x) {
             servoPotencia.setPosition(0.0);
@@ -231,7 +205,6 @@ public class TeleOpfinal extends LinearOpMode {
         Coletor        = hardwareMap.get(DcMotor.class,   "motorExtra");
         Auxilio        = hardwareMap.get(DcMotor.class,   "motorAuxiliar");
         motorPotencia  = hardwareMap.get(DcMotor.class,   "motorPotencia");
-        servoTorreta   = hardwareMap.get(Servo.class,     "servoTorreta");
         servoPotencia  = hardwareMap.get(Servo.class,     "servoPotencia");
         servo2Potencia = hardwareMap.get(Servo.class,     "servo2Potencia");
         ServoC         = hardwareMap.get(CRServo.class,   "ServoColetor");
@@ -239,7 +212,7 @@ public class TeleOpfinal extends LinearOpMode {
 
         motorPotencia.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         servoPotencia.setDirection(Servo.Direction.REVERSE);
-        servo2Potencia.setDirection(Servo.Direction.REVERSE);
+        servo2Potencia.setDirection(Servo.Direction.FORWARD);
 
     }
 }
