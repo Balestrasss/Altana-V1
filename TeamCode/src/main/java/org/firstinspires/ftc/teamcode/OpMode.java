@@ -151,8 +151,8 @@ public class TeleOpfinal extends LinearOpMode {
 
     // Controle 2 - Lançador (analógico direito pra cima) e gatilho (Y)
     public void motorsLancador() {// pra cima = positivo
-   boolean botaoYAtual = gamepad2.y;
-       if (gamepad2.right_trigger > 0.2)
+        boolean botaoYAtual = gamepad2.y;
+        if (gamepad2.right_trigger > 0.2)
             motorPotencia.setPower(0.53);
         else {
             motorPotencia.setPower(0.0);
@@ -243,3 +243,5 @@ public class TeleOpfinal extends LinearOpMode {
 
     }
 }
+
+

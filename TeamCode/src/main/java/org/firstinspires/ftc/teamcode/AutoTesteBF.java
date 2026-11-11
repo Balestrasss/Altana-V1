@@ -27,24 +27,13 @@ public class AutoTestBF extends LinearOpMode {
 
     static final String ServoGatilho = "ServoColetor";
 
-    //Posição pods (ATENÇÃO: no TeleOp está 30 e 12 — um dos dois está errado, medir!)
+    //Posição pods
     static final double xOffset = 95;
     static final double yOffset = 100;
 
-    //Tolerancia
-    static final double tol  = 15;      // mm
-    static final double tolH  = 4;      // graus
-
-    // Controle do movimento
-    static final double VEL     = 0.5;    // potência máxima andando
-    static final double POT_MIN = 0.12;   // mínimo para vencer o atrito (senão para antes do ponto)
-    static final double KP      = 0.004;  // potência por mm de erro
-    static final double KP_H    = 0.02;   // potência por grau de erro
-    static final double TIMEOUT = 5.0;    // s: se não chegar, desiste (bateu em algo)
-
-    // Sinais: troque para -1 o que o MODO TESTE mandar (ver tela do teste)
-    static final double SINAL_LATERAL = 1;
-    static final double SINAL_GIRO    = 1;
+    // Potências
+    static final double POT      = 0.5;   // andando
+    static final double POT_GIRO = 0.4;   // girando
 
     // Motores + Servo + Odo
     private DcMotor Lef, Ldf, Let, Ldt;
@@ -58,40 +47,19 @@ public class AutoTestBF extends LinearOpMode {
             GoBildaPinpointDriver.EncoderDirection.FORWARD;
 
     private double x, y, h;
-    private double erX, erY, erH;
-    private boolean modoTeste = false;
-    private boolean abortado = false;
-    private String aviso = "";
 
     // =====================================================================
     @Override
     public void runOpMode() {
         config();
 
-        boolean yAnterior = false;
-        while (opModeInInit()) {        // mostra a pose no INIT (confere se o Pinpoint responde)
-            if (gamepad1.y && !yAnterior) modoTeste = !modoTeste;   // Y no INIT = liga/desliga o teste
-            yAnterior = gamepad1.y;
-            atualizarOdo();
-            telemetry.addData("MODO TESTE (Y no gamepad1)", modoTeste ? "LIGADO" : "desligado");
-            tel();
-        }
+        waitForStart();
         if(isStopRequested()) return;
-
-        if (modoTeste) {
-            testeDirecoes();
-            return;
-        }
 
         trajeto();
 
         parar();
         desligarMecanismos();
-
-        while (opModeIsActive()) {
-            atualizarOdo();
-            tel();
-        }
     }
 
     public void config() {
@@ -112,17 +80,15 @@ public class AutoTestBF extends LinearOpMode {
         Ldt.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         Mt = hardwareMap.get(DcMotor.class, M_MT);
-        // RUN_USING_ENCODER só se o cabo de encoder do lançador estiver ligado.
-        // Sem o cabo, o controle de velocidade do Hub "acha" que o motor está parado e manda tudo.
         Mt.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         Mt.setDirection(DcMotor.Direction.FORWARD);
-        Mt.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);   // igual ao TeleOp
+        Mt.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         Mc = hardwareMap.get(DcMotor.class, M_MC);
         Mc2 = hardwareMap.get(DcMotor.class, M_MC2);
 
         Mc.setDirection(DcMotor.Direction.FORWARD);
-        Mc2.setDirection(DcMotor.Direction.REVERSE);   // igual ao TeleOp (Auxilio = REVERSE)
+        Mc2.setDirection(DcMotor.Direction.REVERSE);
 
         odo = hardwareMap.get(GoBildaPinpointDriver.class, PINPOINT);
         odo.setOffsets(xOffset, yOffset, DistanceUnit.MM);
@@ -140,7 +106,6 @@ public class AutoTestBF extends LinearOpMode {
 
     //Servo coletor
     public void coletar(){
-
         Mc.setPower(1.0);
         Mc2.setPower(1.0);
     }
@@ -151,20 +116,18 @@ public class AutoTestBF extends LinearOpMode {
 
         while(opModeIsActive() && cronometro.seconds() < 4){
             Sg.setPower(1.0);
-            atualizarOdo();
-            tel();
         }
         Sg.setPower(0);
     }
     public void lancar(){
-        Mt.setPower(0.10);      // TeleOp usa até 0.54; 0.10 quase não gira
+        Mt.setPower(0.10);
     }
     public void atualizarOdo() {
         odo.update();
         Pose2D p = odo.getPosition();
-        x = p.getX(DistanceUnit.MM);     // X do Pinpoint = FRENTE
-        y = p.getY(DistanceUnit.MM);     // Y do Pinpoint = ESQUERDA
-        h = p.getHeading(AngleUnit.DEGREES);   // + = girou para a ESQUERDA
+        x = p.getX(DistanceUnit.MM);
+        y = p.getY(DistanceUnit.MM);
+        h = p.getHeading(AngleUnit.DEGREES);
     }
 
     public void gatilho(){
@@ -172,69 +135,32 @@ public class AutoTestBF extends LinearOpMode {
     }
 
     // =====================================================================
-    // Base: mesma mistura do TeleOp.
-    // axial + = frente, lateral + = direita, rot + = girar p/ direita
-    public void mover(double axial, double lateral, double rot) {
-        lateral *= SINAL_LATERAL;
-        rot     *= SINAL_GIRO;
-        double vLef = axial - lateral + rot;
-        double vLdf = axial + lateral - rot;
-        double vLet = axial + lateral + rot;
-        double vLdt = axial - lateral - rot;
-
-        double max = Math.max(1.0, Math.max(Math.max(Math.abs(vLef), Math.abs(vLdf)),
-                Math.max(Math.abs(vLet), Math.abs(vLdt))));
-        Lef.setPower(vLef / max);
-        Ldf.setPower(vLdf / max);
-        Let.setPower(vLet / max);
-        Ldt.setPower(vLdt / max);
+    // Movimentação: liga as rodas e desliga quando andou a distância
+    // (ou girou o ângulo). Distância em mm, ângulo em graus.
+    public void rodas(double lef, double ldf, double let, double ldt) {
+        Lef.setPower(lef);
+        Ldf.setPower(ldf);
+        Let.setPower(let);
+        Ldt.setPower(ldt);
     }
 
-    /**
-     * Vai até a posição (x, y em mm; ângulo em graus) ABSOLUTA do campo,
-     * lendo a odometria a CADA ciclo. Para quando chega, estoura o tempo
-     * ou o juiz aperta STOP.
-     */
-    public void irPara(double alvoX, double alvoY, double alvoH) {
-        if (abortado) return;
-        ElapsedTime t = new ElapsedTime();
+    public void andar(double distancia, double lef, double ldf, double let, double ldt) {
         atualizarOdo();
-        double erroAngInicial = Math.abs(normalizar(alvoH - h));
-        while (opModeIsActive() && t.seconds() < TIMEOUT) {
+        double x0 = x, y0 = y;
+        rodas(lef, ldf, let, ldt);
+        while (opModeIsActive() && Math.hypot(x - x0, y - y0) < distancia) {
             atualizarOdo();
+            tel();
+        }
+        parar();
+    }
 
-            erX = alvoX - x;
-            erY = alvoY - y;
-            erH = normalizar(alvoH - h);
-            double dist = Math.hypot(erX, erY);
-
-            // TRAVA: o erro de ângulo CRESCEU muito = o giro está corrigindo para o lado errado
-            if (Math.abs(erH) > erroAngInicial + 30) {
-                parar();
-                abortado = true;
-                aviso = "PAROU: o ângulo foi para o lado errado. Rode o MODO TESTE (Y no INIT).";
-                tel();
-                return;
-            }
-
-            if (dist < tol && Math.abs(erH) < tolH) break;   // chegou
-
-            // erro do campo -> erro do ponto de vista do robô
-            double hr = Math.toRadians(h);
-            double frente   =  erX * Math.cos(hr) + erY * Math.sin(hr);
-            double esquerda = -erX * Math.sin(hr) + erY * Math.cos(hr);
-
-            // translação proporcional à distância, com mínimo e máximo
-            double vel = Math.min(VEL, Math.max(POT_MIN, KP * dist));
-            if (dist < tol) vel = 0;
-            double axial   = dist > 0 ? frente   / dist * vel : 0;
-            double lateral = dist > 0 ? -esquerda / dist * vel : 0;
-
-            // giro proporcional ao erro de ângulo (erH + = precisa ir p/ esquerda)
-            double rot = -Math.max(-VEL, Math.min(VEL, KP_H * erH));
-            if (Math.abs(erH) >= tolH && Math.abs(rot) < POT_MIN) rot = -Math.signum(erH) * POT_MIN;
-
-            mover(axial, lateral, rot);
+    public void girar(double angulo, double lef, double ldf, double let, double ldt) {
+        atualizarOdo();
+        double h0 = h;
+        rodas(lef, ldf, let, ldt);
+        while (opModeIsActive() && Math.abs(normalizar(h - h0)) < angulo) {
+            atualizarOdo();
             tel();
         }
         parar();
@@ -246,81 +172,27 @@ public class AutoTestBF extends LinearOpMode {
         return graus;
     }
 
-    // Movimentação (distâncias RELATIVAS à posição atual do robô, mantendo o ângulo)
     public void irFrente(double distancia){
-        atualizarOdo();
-        double hr = Math.toRadians(h);
-        irPara(x + distancia * Math.cos(hr), y + distancia * Math.sin(hr), h);
+        andar(distancia,  POT,  POT,  POT,  POT);
     }
     public void irTras(double distancia){
-        irFrente(-distancia);
+        andar(distancia, -POT, -POT, -POT, -POT);
     }
     public void irEsquerda(double distancia){
-        atualizarOdo();
-        double hr = Math.toRadians(h);
-        irPara(x - distancia * Math.sin(hr), y + distancia * Math.cos(hr), h);
+        andar(distancia,  POT, -POT, -POT,  POT);
     }
     public void irDireita(double distancia){
-        irEsquerda(-distancia);
+        andar(distancia, -POT,  POT,  POT, -POT);
     }
 
     public void girarDir(double angulo){
-        atualizarOdo();
-        irPara(x, y, normalizar(h - angulo));
+        girar(angulo,  POT_GIRO, -POT_GIRO,  POT_GIRO, -POT_GIRO);
     }
     public void girarEsq(double angulo){
-        atualizarOdo();
-        irPara(x, y, normalizar(h + angulo));
+        girar(angulo, -POT_GIRO,  POT_GIRO, -POT_GIRO,  POT_GIRO);
     }
     public void parar() {
-        Lef.setPower(0);
-        Ldf.setPower(0);
-        Let.setPower(0);
-        Ldt.setPower(0);
-    }
-    /**
-     * MODO TESTE: anda um pouco em cada direção e diz qual sinal trocar.
-     * Deixe ~1 m livre em volta do robô.
-     */
-    public void testeDirecoes() {
-        double[] f = testar(0.3, 0, 0);     // frente
-        double[] l = testar(0, 0.3, 0);     // direita
-        double[] g = testar(0, 0, 0.3);     // girar p/ direita
-
-        String frente = (f[0] > 50 && Math.abs(f[2]) < 15) ? "OK"
-                : (f[0] < -50 ? "ANDOU P/ TRÁS: inverta as 4 direções das rodas no config()"
-                   : "GIROU/ANDOU TORTO: direções das rodas esquerda x direita erradas no config()");
-        String lado = l[1] < -50 ? "OK" : (l[1] > 50 ? "INVERTIDO: SINAL_LATERAL = -1" : "não andou de lado: confira as rodas");
-        String giro = g[2] < -10 ? "OK" : (g[2] > 10 ? "INVERTIDO: SINAL_GIRO = -1" : "não girou: confira as rodas");
-
-        while (opModeIsActive()) {
-            telemetry.addLine("=== RESULTADO DO TESTE ===");
-            telemetry.addData("Frente", "%s  (dx=%.0f dy=%.0f dh=%.0f)", frente, f[0], f[1], f[2]);
-            telemetry.addData("Direita", "%s  (dx=%.0f dy=%.0f dh=%.0f)", lado, l[0], l[1], l[2]);
-            telemetry.addData("Giro dir.", "%s  (dx=%.0f dy=%.0f dh=%.0f)", giro, g[0], g[1], g[2]);
-            telemetry.addData("Pinpoint", odo.getDeviceStatus());
-            telemetry.update();
-        }
-    }
-
-    /** Manda (axial, lateral, rot) por 0.6 s e devolve {dx, dy, dh} medidos (dx/dy do ponto de vista do robô). */
-    private double[] testar(double axial, double lateral, double rot) {
-        sleep(400);
-        atualizarOdo();
-        double x0 = x, y0 = y, h0 = h;
-        ElapsedTime t = new ElapsedTime();
-        while (opModeIsActive() && t.seconds() < 0.6) {
-            mover(axial, lateral, rot);
-            atualizarOdo();
-        }
-        parar();
-        sleep(400);
-        atualizarOdo();
-        double hr = Math.toRadians(h0);
-        double dxc = x - x0, dyc = y - y0;
-        return new double[]{dxc * Math.cos(hr) + dyc * Math.sin(hr),
-                -dxc * Math.sin(hr) + dyc * Math.cos(hr),
-                normalizar(h - h0)};
+        rodas(0, 0, 0, 0);
     }
 
     public void desligarMecanismos() {
@@ -331,18 +203,20 @@ public class AutoTestBF extends LinearOpMode {
     }
     //Trajeto
     public void trajeto() {
-        irFrente(2000.0);
+        irFrente(1500.0);
         sleep(1000);
-
+        girarEsq(120.0);
+        sleep(1000);
+        irTras(300);
+        atirar();
+        gatilho();
+        irFrente(300);
 
         parar();
 
     }
     public void tel() {
         telemetry.addData("Pose", "%.0f %.0f %.0f", x, y, h);
-        telemetry.addData("Erro", "%.0f %.0f %.0f", erX, erY, erH);
-        telemetry.addData("Pinpoint", odo.getDeviceStatus());
-        if (!aviso.isEmpty()) telemetry.addLine(aviso);
         telemetry.update();
     }
 }
