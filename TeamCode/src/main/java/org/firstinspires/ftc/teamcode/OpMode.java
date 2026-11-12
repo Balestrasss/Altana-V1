@@ -50,11 +50,6 @@ public class AutoTestBF extends LinearOpMode {
     static final double POT_RETA = 0.40;   // potencia andando
     static final double POT_GIRO = 0.35;   // potencia girando
 
-    // Quanto o robo anda/gira por SEGUNDO nessas potencias. COMO MEDIR:
-    //  - deixe so irFrente(1000) no trajeto, rode e meca com trena quanto andou (ex.: 800 mm)
-    //    -> MM_POR_SEG_FRENTE = MM_POR_SEG_FRENTE * 800 / 1000
-    //  - mesma coisa com irDireita(1000) para MM_POR_SEG_LADO
-    //  - so girarEsq(360) e veja quanto girou (ex.: 300 graus) para GRAUS_POR_SEG
     static final double MM_POR_SEG_FRENTE = 600;   // TODO medir
     static final double MM_POR_SEG_LADO   = 500;   // TODO medir (de lado o mecanum anda menos)
     static final double GRAUS_POR_SEG     = 180;   // TODO medir
